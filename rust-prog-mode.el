@@ -49,29 +49,52 @@ to the function arguments.  When nil, `->' will be indented one level."
   :group 'rust-mode
   :safe #'booleanp)
 
-(defface rust-unsafe
-  '((t :inherit font-lock-warning-face))
-  "Face for the `unsafe' keyword."
+(defface rust-prelude-value
+  '((t :inherit font-lock-preprocessor-face))
+  "Face for Rust prelude values such as None, Some, Ok, self, etc."
+  :group 'rust-mode)
+
+(defface rust-attribute
+  '((t :inherit font-lock-preprocessor-face))
+  "Face for Rust attributes."
   :group 'rust-mode)
 
 (defface rust-question-mark
-  '((t :weight bold :inherit font-lock-builtin-face))
+  '((t :weight bold :inherit font-lock-misc-punctuation-face))
   "Face for the question mark operator."
   :group 'rust-mode)
 
+(defface rust-keyword2
+  '((t :inherit font-lock-builtin-face))
+  "Face for keyword-2 groups including `mut', `Option', `Result',."
+  :group 'rust-mode)
+
+(defface rust-lifetime
+  '((t :inherit font-lock-delimiter-face))
+  "Face for Rust lifetime annotations."
+  :group 'rust-mode)
+
 (defface rust-ampersand-face
-  '((t :inherit default))
+  '((t :inherit font-lock-builtin-face))
   "Face for the ampersand reference mark."
   :group 'rust-mode)
 
+;; All macros should be equal so regardless of builtin or not
 (defface rust-builtin-formatting-macro
-  '((t :inherit font-lock-builtin-face))
+  '((t :inherit font-lock-constant-face))
   "Face for builtin formatting macros (print! &c.)."
   :group 'rust-mode)
 
+;; Not used as not all fonts have italic face
 (defface rust-string-interpolation
-  '((t :slant italic :inherit font-lock-string-face))
+  '((t :inherit font-lock-string-face))
   "Face for interpolating braces in builtin formatting macro strings."
+  :group 'rust-mode)
+
+;; Not used anymore as `unsafe' has been added to `keywords' list
+(defface rust-unsafe
+  '((t :inherit font-lock-keyword-face))
+  "Face for the `unsafe' keyword."
   :group 'rust-mode)
 
 ;;; Syntax
@@ -84,6 +107,7 @@ to the function arguments.  When nil, `->' will be indented one level."
 (defconst rust-re-lc-ident "[[:lower:][:multibyte:]_][[:word:][:multibyte:]_[:digit:]]*")
 (defconst rust-re-uc-ident "[[:upper:]][[:word:][:multibyte:]_[:digit:]]*")
 (defvar rust-re-vis
+  ;; visibility patterns:
   ;; pub | pub ( crate ) | pub ( self ) | pub ( super ) | pub ( in SimplePath )
   (concat
    "pub"
@@ -103,7 +127,9 @@ to the function arguments.  When nil, `->' will be indented one level."
    "?"))
 (defconst rust-re-unsafe "unsafe")
 (defconst rust-re-extern "extern")
-(defconst rust-re-async-or-const "async\\|const")
+(defconst rust-re-async-or-const "async\\|const") ; not used
+(defconst rust-re-async "async")
+(defconst rust-re-const "const")
 (defconst rust-re-generic
   (concat "<[[:space:]]*'" rust-re-ident "[[:space:]]*>"))
 (defconst rust-re-union
@@ -123,8 +149,8 @@ to the function arguments.  When nil, `->' will be indented one level."
 (defun rust-re-item-def-imenu (itype)
   (concat "^[[:space:]]*"
           (rust-re-shy (concat rust-re-vis "[[:space:]]+")) "?"
-          (rust-re-shy (concat (rust-re-word "default") "[[:space:]]+")) "?"
-          (rust-re-shy (concat (rust-re-shy rust-re-async-or-const) "[[:space:]]+")) "?"
+          (rust-re-shy (concat (rust-re-shy rust-re-async) "[[:space:]]+")) "?"
+          (rust-re-shy (concat (rust-re-shy rust-re-const) "[[:space:]]+")) "?"
           (rust-re-shy (concat (rust-re-word rust-re-unsafe) "[[:space:]]+")) "?"
           (rust-re-shy (concat (rust-re-word rust-re-extern) "[[:space:]]+"
                                (rust-re-shy "\"[^\"]+\"[[:space:]]+") "?")) "?"
@@ -164,7 +190,7 @@ See `prettify-symbols-compose-predicate'."
           ;; TODO some of this does only make sense for `fn' (unsafe, extern...)
           ;; and not other items
           (rust-re-shy (concat (rust-re-shy rust-re-vis) "[[:space:]]+")) "?"
-          (rust-re-shy (concat (rust-re-shy rust-re-async-or-const) "[[:space:]]+")) "?"
+          (rust-re-shy (concat (rust-re-shy rust-re-async) "[[:space:]]+")) "?"
           (rust-re-shy (concat (rust-re-shy rust-re-unsafe) "[[:space:]]+")) "?"
           (regexp-opt
            '("enum" "struct" "union" "type" "mod" "fn" "static" "impl"
@@ -183,20 +209,22 @@ See `prettify-symbols-compose-predicate'."
     "const" "continue" "crate"
     "do" "dyn"
     "else" "enum" "extern" "existential"
-    "false" "fn" "for"
+    "fn" "for"
     "if" "impl" "in"
     "let" "loop"
-    "match" "mod" "move" "mut"
+    "match" "mod" "move"
     "priv" "pub"
     "ref" "return"
-    "self" "static" "struct" "super"
-    "true" "trait" "type" "try"
+    "static" "struct" "super"
+    "trait" "type" "try"
     "use"
+    "unsafe"
     "virtual"
     "where" "while"
     "yield")
   "Font-locking definitions and helpers.")
 
+;; They are just types as other types, they should NOT be `special'
 (defconst rust-special-types
   '("u8" "i8"
     "u16" "i16"
@@ -212,6 +240,13 @@ See `prettify-symbols-compose-predicate'."
 (defconst rust-expression-introducers
   '("if" "while" "match" "return" "box" "in")
   "List of Rust keywords that are always followed by expressions.")
+
+;; Treate all numbers equally so this is indeed for all rut numbers
+(defconst rust-numbers
+  (concat "\\_<\\([[:digit:]][[:digit:]a-fA-F_.]*"
+            "\\([ifu][123468]\\{1,3\\}\\)?"
+            "\\)\\_>")
+    "Regex matching a number with a type suffix.")
 
 (defconst rust-number-with-type
   (eval-when-compile
@@ -241,6 +276,7 @@ This is used by `rust-font-lock-keywords'.
   "\\(?:r#*\\)?\""
   "Regular expression to match the start of a Rust raw string.")
 
+;; This is the least I want so I decide to disable it completely
 (defun rust-path-font-lock-matcher (re-ident)
   "Match occurrences of RE-IDENT followed by a double-colon.
 Examples include to match names like \"foo::\" or \"Foo::\".
@@ -259,94 +295,65 @@ Does not match type annotations of the form \"foo::<\"."
             ((not (looking-at (rx (0+ space) "<")))
              (throw 'rust-path-font-lock-matcher match))))))))
 
+;;; I removed several rules to reflect my opinionated approach:
+;;; 1. All keywords are equal, even the `unsafe'
+;;; 2. Somehow the following two groups of words are special in rustdoc themes:
+;;; a: `self', `true', `false', `Self', `Some', `Ok', `None', (red-ish)
+;;; b: `Option', `Result', `mut' (purple-ish)
+;;; 3. All types are equal and not highlighted
+;;; 4. All numbers are equal, even with suffixes
+;;; 5. All macros are equal, no matter builtin, prelude or whatever
+;;; 6. Paths such as `a::b::c' are not highlighted as a regex pattern has no
+;;; semantics: highlighted paths can to wrong path when the code is compiled
 (defvar rust-font-lock-keywords
   (append
    `(
      ;; Keywords proper
-     (,(regexp-opt rust-keywords 'symbols) . font-lock-keyword-face)
+     (,(regexp-opt rust-keywords 'symbols) . 'font-lock-keyword-face)
 
      ;; Contextual keywords
-     ("\\_<\\(default\\)[[:space:]]+fn\\_>" 1 font-lock-keyword-face)
-     (,rust-re-union 1 font-lock-keyword-face)
-
-     ;; Special types
-     (,(regexp-opt rust-special-types 'symbols) . font-lock-type-face)
-
-     ;; The unsafe keyword
-     ("\\_<unsafe\\_>" . 'rust-unsafe)
+     ("\\_<\\(default\\)[[:space:]]+fn\\_>" 1 'font-lock-keyword-face)
+     (,rust-re-union 1 'font-lock-keyword-face)
 
      ;; Attributes like `#[bar(baz)]` or `#![bar(baz)]` or `#[bar = "baz"]`
      (,(rust-re-grab (concat "#\\!?\\[" rust-re-ident "[^]]*\\]"))
-      1 font-lock-preprocessor-face keep)
+      1 'font-lock-preprocessor-face keep)
 
-     ;; Builtin formatting macros
-     (,(concat (rust-re-grab
-                (concat (rust-re-word (regexp-opt rust-builtin-formatting-macros))
-                        "!"))
-               rust-formatting-macro-opening-re
-               "\\(?:" rust-start-of-string-re "\\)?")
-      (1 'rust-builtin-formatting-macro)
-      (rust-string-interpolation-matcher
-       (rust-end-of-string)
-       nil
-       (0 'rust-string-interpolation t nil)))
+     ;; Function names (not in Rust doc themes but I like it)
+     (,(concat "fn[[:space:]]+" (rust-re-grab rust-re-ident))
+      1 'font-lock-function-name-face)
 
-     ;; write! macro
-     (,(concat (rust-re-grab (concat (rust-re-word "write\\(ln\\)?") "!"))
-               rust-formatting-macro-opening-re
-               "[[:space:]]*[^\"]+,[[:space:]]*"
-               rust-start-of-string-re)
-      (1 'rust-builtin-formatting-macro)
-      (rust-string-interpolation-matcher
-       (rust-end-of-string)
-       nil
-       (0 'rust-string-interpolation t nil)))
-
-     ;; Syntax extension invocations like `foo!`, highlight including the !
+     ;; Macros like `foo!`, highlight including the !
      (,(concat (rust-re-grab (concat rust-re-ident "!")) "[({[:space:][]")
-      1 font-lock-preprocessor-face)
+      1 'font-lock-constant-face)
 
-     ;; Field names like `foo:`, highlight excluding the :
-     (,(concat (rust-re-grab rust-re-ident) "[[:space:]]*:[^:]")
-      1 font-lock-variable-name-face)
-
-     ;; CamelCase Means Type Or Constructor
-     (,rust-re-type-or-constructor 1 font-lock-type-face)
-
-     ;; Type-inferred binding
-     (,(concat "\\_<\\(?:let\\s-+ref\\|let\\|ref\\|for\\)\\s-+\\(?:mut\\s-+\\)?"
-               (rust-re-grab rust-re-ident)
-               "\\_>")
-      1 font-lock-variable-name-face)
-
-     ;; Type names like `Foo::`, highlight excluding the ::
-     (,(rust-path-font-lock-matcher rust-re-uc-ident) 1 font-lock-type-face)
-
-     ;; Module names like `foo::`, highlight excluding the ::
-     (,(rust-path-font-lock-matcher rust-re-lc-ident) 1 font-lock-constant-face)
-
-     ;; Lifetimes like `'foo`
-     (,(concat "'" (rust-re-grab rust-re-ident) "[^']") 1 font-lock-variable-name-face)
+     ;; Lifetimes or loop labels like `'foo`
+     (,(concat (rust-re-grab (concat "'" rust-re-ident)) "[^']")
+      1 'rust-lifetime)
 
      ;; Question mark operator
      ("\\?" . 'rust-question-mark)
-     ("\\(&+\\)\\(?:'\\(?:\\<\\|_\\)\\|\\<\\|[[({:*_|]\\)"
-      1 'rust-ampersand-face)
-     ;; Numbers with type suffix
-     (,rust-number-with-type 1 font-lock-type-face)
-     )
 
-   ;; Ensure we highlight `Foo` in `struct Foo` as a type.
-   (mapcar #'(lambda (x)
-               (list (rust-re-item-def (car x))
-                     1 (cdr x)))
-           '(("enum" . font-lock-type-face)
-             ("struct" . font-lock-type-face)
-             ("union" . font-lock-type-face)
-             ("type" . font-lock-type-face)
-             ("mod" . font-lock-constant-face)
-             ("use" . font-lock-constant-face)
-             ("fn" . font-lock-function-name-face)))))
+     ;; Ampersand
+     ("\\(&+\\)\\(?:'\\(?:\\<\\|_\\)\\|\\<\\|[[({:*_|]\\)"
+      1 'rust-keyword2)
+
+     ;; Deref operator
+     (,(concat "\\(\\*+\\)[{(]?" (rust-re-grab rust-re-ident)) 1 'rust-keyword2)
+
+     ;; mut
+     ("\\(\\<mut\\>\\)[[:space:]]+" 1 'rust-keyword2)
+
+     ;; Option, Result
+     ("\\<\\(Option\\|Result\\)\\>\\(?:<\\)" 1 'rust-keyword2)
+
+     (,(regexp-opt '("self" "Self" "true" "false" "None") 'symbols)
+      . 'rust-prelude-value)
+
+     ("\\<\\(Ok\\|Err\\|Some\\)\\>(" 1 'rust-prelude-value)
+
+     ;; Numbers (may be with type suffix)
+     (,rust-numbers . 'font-lock-number-face))))
 
 (defun rust-end-of-string ()
   "Skip to the end of the current string."
@@ -886,8 +893,8 @@ current line within the code example."
                  (insert indented))
                (forward-char rel-point)))))))))
 
+;;; Not used as not all fonts support italic face
 ;;; Font-locking definitions and helpers
-
 (defun rust-next-string-interpolation (limit)
   "Search forward from point for next Rust interpolation marker before LIMIT.
 Set point to the end of the occurrence found, and return match beginning
@@ -1480,7 +1487,7 @@ This is written mainly to be used as `end-of-defun-function' for Rust."
     ;; There is no opening brace, so consider the whole buffer to be one "defun"
     (goto-char (point-max))))
 
-;;; _
+;;;
 
 (defun rust-mode-reload ()
   (interactive)
@@ -1578,8 +1585,10 @@ whichever comes first."
 
   ;; Fonts
   (setq-local font-lock-defaults
-              '(rust-font-lock-keywords
-                nil nil nil nil
+              '(rust-font-lock-keywords ; keywords
+                nil                     ; kw-only: nil => apply hl to strs and cmts
+                nil                     ; case-fold: nil => case sensitive
+                nil                     ; syntax-alist: use syntax-table
                 (font-lock-syntactic-face-function
                  . rust-mode-syntactic-face-function)))
 
